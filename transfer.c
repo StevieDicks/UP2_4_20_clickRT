@@ -29,7 +29,7 @@ static void pabort(const char *s)
 	abort();
 }
 
-static const char *device = "/dev/spidev1.1";
+static const char *device = "/dev/spidev1.0";
 static uint8_t mode;
 static uint8_t bits = 8;
 static uint32_t speed = 500000;
@@ -38,19 +38,39 @@ static uint16_t delay;
 static void transfer(int fd)
 {
 	int ret;
-	uint8_t tx[] = {
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0x40, 0x00, 0x00, 0x00, 0x00, 0x95,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xDE, 0xAD, 0xBE, 0xEF, 0xBA, 0xAD,
-		0xF0, 0x0D,
-	};
-	uint8_t rx[ARRAY_SIZE(tx)] = {0, };
+
+	// set the value manually here (for now)
+	// current = value / 10
+	// for example:
+	// uint16_t value = 158; // 15.8 mA 
+	uint16_t value = 200;
+
+	printf("\n\rSetting loop current = %.1f mA\n\r", (float)value / 10);
+
+	value *= 20;
+
+	uint8_t tx[2];
+
+	if (value > 4000)
+	{
+		// set to default maximum value (20 mA) if greater than 20 mA
+		value = 4000; // 20 mA
+		printf("**Resetting loop current to default maximum = %.1f mA\n\r", (float)value / 200);
+	}
+	else if (value < 800)
+	{
+		// set to default minimum value (4 mA) if less than 4 mA
+		value = 800; // 4 mA
+		printf("**Resetting loop current to default minimum = %.1f mA\n\r", (float)value / 200);
+	}
+	// put 16-bit value on 2-byte buffer
+	// apply shift and masking based on protocol in datasheet
+	tx[0] = (value >> 8) & 0x0F;
+	tx[0] |= 0x30;
+	tx[1] = value;
+
 	struct spi_ioc_transfer tr = {
 		.tx_buf = (unsigned long)tx,
-		.rx_buf = (unsigned long)rx,
 		.len = ARRAY_SIZE(tx),
 		.delay_usecs = delay,
 		.speed_hz = speed,
@@ -61,11 +81,14 @@ static void transfer(int fd)
 	if (ret < 1)
 		pabort("can't send spi message");
 
-	for (ret = 0; ret < ARRAY_SIZE(tx); ret++) {
+	printf("\n\rSending:");
+	for (ret = 0; ret < ARRAY_SIZE(tx); ret++)
+	{
 		if (!(ret % 6))
 			puts("");
-		printf("%.2X ", rx[ret]);
+		printf("%.2X ", tx[ret]);
 	}
+
 	puts("");
 }
 
@@ -73,35 +96,36 @@ static void print_usage(const char *prog)
 {
 	printf("Usage: %s [-DsbdlHOLC3]\n", prog);
 	puts("  -D --device   device to use (default /dev/spidev1.1)\n"
-	     "  -s --speed    max speed (Hz)\n"
-	     "  -d --delay    delay (usec)\n"
-	     "  -b --bpw      bits per word \n"
-	     "  -l --loop     loopback\n"
-	     "  -H --cpha     clock phase\n"
-	     "  -O --cpol     clock polarity\n"
-	     "  -L --lsb      least significant bit first\n"
-	     "  -C --cs-high  chip select active high\n"
-	     "  -3 --3wire    SI/SO signals shared\n");
+		 "  -s --speed    max speed (Hz)\n"
+		 "  -d --delay    delay (usec)\n"
+		 "  -b --bpw      bits per word \n"
+		 "  -l --loop     loopback\n"
+		 "  -H --cpha     clock phase\n"
+		 "  -O --cpol     clock polarity\n"
+		 "  -L --lsb      least significant bit first\n"
+		 "  -C --cs-high  chip select active high\n"
+		 "  -3 --3wire    SI/SO signals shared\n");
 	exit(1);
 }
 
 static void parse_opts(int argc, char *argv[])
 {
-	while (1) {
+	while (1)
+	{
 		static const struct option lopts[] = {
-			{ "device",  1, 0, 'D' },
-			{ "speed",   1, 0, 's' },
-			{ "delay",   1, 0, 'd' },
-			{ "bpw",     1, 0, 'b' },
-			{ "loop",    0, 0, 'l' },
-			{ "cpha",    0, 0, 'H' },
-			{ "cpol",    0, 0, 'O' },
-			{ "lsb",     0, 0, 'L' },
-			{ "cs-high", 0, 0, 'C' },
-			{ "3wire",   0, 0, '3' },
-			{ "no-cs",   0, 0, 'N' },
-			{ "ready",   0, 0, 'R' },
-			{ NULL, 0, 0, 0 },
+			{"device", 1, 0, 'D'},
+			{"speed", 1, 0, 's'},
+			{"delay", 1, 0, 'd'},
+			{"bpw", 1, 0, 'b'},
+			{"loop", 0, 0, 'l'},
+			{"cpha", 0, 0, 'H'},
+			{"cpol", 0, 0, 'O'},
+			{"lsb", 0, 0, 'L'},
+			{"cs-high", 0, 0, 'C'},
+			{"3wire", 0, 0, '3'},
+			{"no-cs", 0, 0, 'N'},
+			{"ready", 0, 0, 'R'},
+			{NULL, 0, 0, 0},
 		};
 		int c;
 
@@ -110,7 +134,8 @@ static void parse_opts(int argc, char *argv[])
 		if (c == -1)
 			break;
 
-		switch (c) {
+		switch (c)
+		{
 		case 'D':
 			device = optarg;
 			break;
@@ -200,7 +225,7 @@ int main(int argc, char *argv[])
 
 	printf("spi mode: %d\n", mode);
 	printf("bits per word: %d\n", bits);
-	printf("max speed: %d Hz (%d KHz)\n", speed, speed/1000);
+	printf("max speed: %d Hz (%d KHz)\n", speed, speed / 1000);
 
 	transfer(fd);
 

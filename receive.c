@@ -38,20 +38,14 @@ static uint16_t delay;
 static void transfer(int fd)
 {
 	int ret;
-	uint8_t tx[] = {
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0x40, 0x00, 0x00, 0x00, 0x00, 0x95,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xDE, 0xAD, 0xBE, 0xEF, 0xBA, 0xAD,
-		0xF0, 0x0D,
+
+	uint8_t rx[2] = {
+		0,
 	};
-	uint8_t rx[ARRAY_SIZE(tx)] = {0, };
+
 	struct spi_ioc_transfer tr = {
-		.tx_buf = (unsigned long)tx,
 		.rx_buf = (unsigned long)rx,
-		.len = ARRAY_SIZE(tx),
+		.len = ARRAY_SIZE(rx),
 		.delay_usecs = delay,
 		.speed_hz = speed,
 		.bits_per_word = bits,
@@ -61,11 +55,26 @@ static void transfer(int fd)
 	if (ret < 1)
 		pabort("can't send spi message");
 
-	for (ret = 0; ret < ARRAY_SIZE(tx); ret++) {
+	printf("\n\rMeasured (hex):");
+	for (ret = 0; ret < ARRAY_SIZE(rx); ret++)
+	{
 		if (!(ret % 6))
 			puts("");
 		printf("%.2X ", rx[ret]);
 	}
+
+	// shift then OR the received bytes into a 16-bit int,
+	// mask the result according to protocol in the datasheet,
+	// then shift once more to strip off duplicate B1
+	uint16_t result = (uint16_t)(rx[0] << 8);
+	result = result | ((uint16_t)rx[1]);
+	result = result & 0x1FFE;
+	result = result >> 1;
+
+	float current = (float)result / (20 * 10);
+
+	printf("\n\n\rLoop Current = %.3f mA", current);
+
 	puts("");
 }
 
@@ -73,35 +82,36 @@ static void print_usage(const char *prog)
 {
 	printf("Usage: %s [-DsbdlHOLC3]\n", prog);
 	puts("  -D --device   device to use (default /dev/spidev1.1)\n"
-	     "  -s --speed    max speed (Hz)\n"
-	     "  -d --delay    delay (usec)\n"
-	     "  -b --bpw      bits per word \n"
-	     "  -l --loop     loopback\n"
-	     "  -H --cpha     clock phase\n"
-	     "  -O --cpol     clock polarity\n"
-	     "  -L --lsb      least significant bit first\n"
-	     "  -C --cs-high  chip select active high\n"
-	     "  -3 --3wire    SI/SO signals shared\n");
+		 "  -s --speed    max speed (Hz)\n"
+		 "  -d --delay    delay (usec)\n"
+		 "  -b --bpw      bits per word \n"
+		 "  -l --loop     loopback\n"
+		 "  -H --cpha     clock phase\n"
+		 "  -O --cpol     clock polarity\n"
+		 "  -L --lsb      least significant bit first\n"
+		 "  -C --cs-high  chip select active high\n"
+		 "  -3 --3wire    SI/SO signals shared\n");
 	exit(1);
 }
 
 static void parse_opts(int argc, char *argv[])
 {
-	while (1) {
+	while (1)
+	{
 		static const struct option lopts[] = {
-			{ "device",  1, 0, 'D' },
-			{ "speed",   1, 0, 's' },
-			{ "delay",   1, 0, 'd' },
-			{ "bpw",     1, 0, 'b' },
-			{ "loop",    0, 0, 'l' },
-			{ "cpha",    0, 0, 'H' },
-			{ "cpol",    0, 0, 'O' },
-			{ "lsb",     0, 0, 'L' },
-			{ "cs-high", 0, 0, 'C' },
-			{ "3wire",   0, 0, '3' },
-			{ "no-cs",   0, 0, 'N' },
-			{ "ready",   0, 0, 'R' },
-			{ NULL, 0, 0, 0 },
+			{"device", 1, 0, 'D'},
+			{"speed", 1, 0, 's'},
+			{"delay", 1, 0, 'd'},
+			{"bpw", 1, 0, 'b'},
+			{"loop", 0, 0, 'l'},
+			{"cpha", 1, 0, 'H'},
+			{"cpol", 0, 0, 'O'},
+			{"lsb", 0, 0, 'L'},
+			{"cs-high", 0, 0, 'C'},
+			{"3wire", 0, 0, '3'},
+			{"no-cs", 0, 0, 'N'},
+			{"ready", 0, 0, 'R'},
+			{NULL, 0, 0, 0},
 		};
 		int c;
 
@@ -110,7 +120,8 @@ static void parse_opts(int argc, char *argv[])
 		if (c == -1)
 			break;
 
-		switch (c) {
+		switch (c)
+		{
 		case 'D':
 			device = optarg;
 			break;
@@ -200,7 +211,7 @@ int main(int argc, char *argv[])
 
 	printf("spi mode: %d\n", mode);
 	printf("bits per word: %d\n", bits);
-	printf("max speed: %d Hz (%d KHz)\n", speed, speed/1000);
+	printf("max speed: %d Hz (%d KHz)\n", speed, speed / 1000);
 
 	transfer(fd);
 
